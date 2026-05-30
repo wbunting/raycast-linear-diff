@@ -13,8 +13,8 @@ import {
   showToast,
 } from "@raycast/api";
 import { useEffect, useState } from "react";
-import { readReviewInboxFromDb } from "./db";
-import { mergePullRequest, MergeMethod } from "./github";
+import { readReviewInboxFromDb, setPullRequestStatusInDb } from "./db";
+import { closePullRequest, mergePullRequest, MergeMethod } from "./github";
 import {
   markPullRequestRead,
   Preferences,
@@ -197,6 +197,38 @@ function PullRequestItem({
     }
   }
 
+  async function runClose() {
+    const confirmed = await confirmAlert({
+      title: `Close #${pullRequest.number} without merging?`,
+      message: `${pullRequest.title}\n${pullRequest.sourceBranch} → ${pullRequest.targetBranch}`,
+      primaryAction: {
+        title: "Close Pull Request",
+        style: Alert.ActionStyle.Destructive,
+      },
+      icon: Icon.XMarkCircle,
+    });
+    if (!confirmed) {
+      return;
+    }
+
+    const toast = await showToast({
+      style: Toast.Style.Animated,
+      title: "Closing pull request…",
+    });
+
+    try {
+      await closePullRequest(pullRequest.url, { deleteBranch });
+      setPullRequestStatusInDb(pullRequest.id, "closed");
+      toast.style = Toast.Style.Success;
+      toast.title = "Pull request closed";
+      reloadFromDb();
+    } catch (error) {
+      toast.style = Toast.Style.Failure;
+      toast.title = "Close failed";
+      toast.message = error instanceof Error ? error.message : String(error);
+    }
+  }
+
   return (
     <List.Item
       icon={statusIcon(pullRequest)}
@@ -315,6 +347,15 @@ function PullRequestItem({
               onAction={() => runMerge({ auto: true })}
             />
           ) : null}
+          {canMerge ? (
+            <Action
+              title="Close Pull Request"
+              icon={Icon.XMarkCircle}
+              style={Action.Style.Destructive}
+              shortcut={{ modifiers: ["cmd", "shift"], key: "x" }}
+              onAction={runClose}
+            />
+          ) : null}
           {failingChecks.map((check) =>
             check.url ? (
               <Action.OpenInBrowser
@@ -368,7 +409,8 @@ function filterPullRequests(
 ) {
   if (filter === "all") {
     return pullRequests.filter(
-      (pullRequest) => pullRequest.status !== "merged",
+      (pullRequest) =>
+        pullRequest.status !== "merged" && pullRequest.status !== "closed",
     );
   }
   if (filter === "failing") {

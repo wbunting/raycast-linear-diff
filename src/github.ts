@@ -52,6 +52,28 @@ export async function mergePullRequest(
   }
 }
 
+export async function closePullRequest(
+  url: string,
+  options: { deleteBranch?: boolean } = {},
+): Promise<void> {
+  const gh = resolveGhPath();
+  const args = ["pr", "close", url];
+  if (options.deleteBranch) {
+    args.push("--delete-branch");
+  }
+
+  try {
+    await execFileAsync(gh, args, {
+      env: {
+        ...process.env,
+        PATH: `${GH_PATH_PREFIX}:${process.env.PATH ?? ""}`,
+      },
+    });
+  } catch (error) {
+    throw new Error(formatGhError(error));
+  }
+}
+
 function formatGhError(error: unknown): string {
   if (error && typeof error === "object") {
     const stderr = (error as { stderr?: string }).stderr;

@@ -2,10 +2,13 @@ import { existsSync } from "node:fs";
 import { DB_PATH } from "./paths";
 import { ReviewInbox, ReviewPullRequest } from "./linear";
 
+type SqliteStatement = {
+  all: () => unknown[];
+  run: (...params: unknown[]) => unknown;
+};
+
 type SqliteDatabase = {
-  prepare: (sql: string) => {
-    all: () => unknown[];
-  };
+  prepare: (sql: string) => SqliteStatement;
   close: () => void;
 };
 
@@ -123,6 +126,31 @@ export function readReviewInboxFromDb(): ReviewInbox | undefined {
     };
   } catch {
     return undefined;
+  } finally {
+    db.close();
+  }
+}
+
+// Optimistically reflect a local action (e.g. closing a PR via gh) in SQLite so
+// the list updates immediately, instead of waiting for the sidecar to re-poll
+// Linear. The sidecar will overwrite this with authoritative state on its next
+// sync.
+export function setPullRequestStatusInDb(
+  id: string,
+  status: ReviewPullRequest["status"],
+): void {
+  if (!existsSync(DB_PATH)) {
+    return;
+  }
+
+  const db = new DatabaseSync(DB_PATH);
+  try {
+    db.prepare("update pull_requests set status = ? where id = ?").run(
+      status,
+      id,
+    );
+  } catch {
+    // Best-effort: if the write fails the periodic reload still recovers state.
   } finally {
     db.close();
   }
