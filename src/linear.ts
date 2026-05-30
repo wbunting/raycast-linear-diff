@@ -12,6 +12,8 @@ export type Preferences = {
   linearApiKey: string;
   pageSize?: string;
   includeRead?: boolean;
+  mergeMethod?: "squash" | "merge" | "rebase";
+  deleteBranchOnMerge?: boolean;
 };
 
 type GraphQLError = {

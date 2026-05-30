@@ -9,6 +9,7 @@ A fast review inbox for **[Linear Diffs](https://linear.app/docs/diffs)** pull r
 - **CI check summary** — counts of passing, pending, and failing checks, with the failing check named directly in the list.
 - **Filters** by status, unread, or failing checks.
 - **Quick actions** — open in the Linear app or browser, open the PR, jump straight to a failing check, copy the URL or source branch, and mark the Linear notification read.
+- **Merge from Raycast** — merge a PR (`⌘⇧M`) or enable GitHub auto-merge (`⌘⇧A`) without leaving the list, using your configured merge method. Powered by the GitHub CLI (`gh`).
 - **Background sync** via a lightweight sidecar process that polls Linear once a minute.
 
 ## How it works
@@ -65,6 +66,8 @@ All state lives under `~/.linear-diffs-raycast/`:
 | **Linear API Key** | — | Personal API key used for all requests. Stored locally by Raycast. |
 | **Notifications to Scan** | `1000` | How many recent notifications each refresh pulls (25–1000). Higher finds more PRs but is heavier per refresh. |
 | **Include Read Notifications** | on | When off, only unread Diffs notifications are shown. |
+| **Merge Method** | Squash and Merge | Method `gh pr merge` uses for both direct merge and auto-merge (`squash` / `merge` / `rebase`). |
+| **Delete Branch on Merge** | off | When on, deletes the source branch after a successful merge. |
 
 ## Commands
 
@@ -78,6 +81,7 @@ All state lives under `~/.linear-diffs-raycast/`:
 
 - A Node.js runtime with the experimental **`node:sqlite`** module (Node 22+). Raycast bundles a compatible runtime; the sidecar runs under the same `process.execPath`.
 - A Linear workspace with Diffs enabled and GitHub connected.
+- For the merge actions: the **GitHub CLI** (`brew install gh`) authenticated via `gh auth login`. Linear's public API exposes no merge mutation, so merges go through `gh` against the GitHub PR directly. The extension looks for `gh` in `/opt/homebrew/bin`, `/usr/local/bin`, and `/usr/bin`.
 
 ## Development
 
@@ -98,6 +102,7 @@ Source layout:
 | `src/sidecar.ts` | Spawns/tracks the detached sidecar; writes config |
 | `src/db.ts` | Read-only SQLite access for the UI |
 | `src/linear.ts` | Linear GraphQL types and the in-process fetch path |
+| `src/github.ts` | `gh` CLI wrapper for merging / enabling auto-merge |
 | `src/paths.ts` | Shared filesystem paths |
 | `assets/sidecar.cjs` | The standalone background poller |
 

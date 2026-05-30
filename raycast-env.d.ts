@@ -13,7 +13,11 @@ type ExtensionPreferences = {
   /** Notifications to Scan - More rows can find more PRs, but each refresh asks Linear for more notifications. */
   "pageSize": string,
   /** Include Read Notifications - Disable to show only unread Diffs notifications. */
-  "includeRead": boolean
+  "includeRead": boolean,
+  /** Merge Method - How the GitHub CLI merges pull requests when you merge or enable auto-merge. */
+  "mergeMethod": "squash" | "merge" | "rebase",
+  /** Delete Branch on Merge - Delete the source branch after merging. */
+  "deleteBranchOnMerge": boolean
 }
 
 /** Preferences accessible in all the extension's commands */

@@ -51,6 +51,28 @@
       "type": "checkbox",
       "default": true,
       "required": false
+    },
+    {
+      "name": "mergeMethod",
+      "title": "Merge Method",
+      "description": "How the GitHub CLI merges pull requests when you merge or enable auto-merge.",
+      "type": "dropdown",
+      "default": "squash",
+      "required": false,
+      "data": [
+        { "title": "Squash and Merge", "value": "squash" },
+        { "title": "Create a Merge Commit", "value": "merge" },
+        { "title": "Rebase and Merge", "value": "rebase" }
+      ]
+    },
+    {
+      "name": "deleteBranchOnMerge",
+      "title": "Delete Branch on Merge",
+      "label": "Delete Source Branch",
+      "description": "Delete the source branch after merging.",
+      "type": "checkbox",
+      "default": false,
+      "required": false
     }
   ],
   "dependencies": {

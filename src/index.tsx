@@ -1,15 +1,20 @@
 import {
   Action,
   ActionPanel,
+  Alert,
   Color,
+  confirmAlert,
   Icon,
   Keyboard,
   List,
+  Toast,
   getPreferenceValues,
   open,
+  showToast,
 } from "@raycast/api";
 import { useEffect, useState } from "react";
 import { readReviewInboxFromDb } from "./db";
+import { mergePullRequest, MergeMethod } from "./github";
 import {
   markPullRequestRead,
   Preferences,
@@ -139,6 +144,57 @@ function PullRequestItem({
   const requiredChecks = pullRequest.checks.filter((check) => check.isRequired);
   const repo = getRepositoryName(pullRequest.url);
 
+  const mergeMethod = (preferences.mergeMethod ?? "squash") as MergeMethod;
+  const deleteBranch = preferences.deleteBranchOnMerge === true;
+  const canMerge =
+    pullRequest.status !== "merged" && pullRequest.status !== "closed";
+
+  async function runMerge(options: { auto: boolean }) {
+    if (options.auto) {
+      const enabled = await confirmAlert({
+        title: `Enable auto-merge for #${pullRequest.number}?`,
+        message: `${pullRequest.title}\nWill ${mergeMethod} into ${pullRequest.targetBranch} once requirements pass.`,
+        primaryAction: { title: "Enable Auto-Merge" },
+        icon: Icon.Clock,
+      });
+      if (!enabled) {
+        return;
+      }
+    } else {
+      const confirmed = await confirmAlert({
+        title: `Merge #${pullRequest.number} now?`,
+        message: `${pullRequest.title}\n${pullRequest.sourceBranch} into ${pullRequest.targetBranch} (${mergeMethod}).`,
+        primaryAction: {
+          title: "Merge Pull Request",
+          style: Alert.ActionStyle.Destructive,
+        },
+        icon: Icon.Checkmark,
+      });
+      if (!confirmed) {
+        return;
+      }
+    }
+
+    const toast = await showToast({
+      style: Toast.Style.Animated,
+      title: options.auto ? "Enabling auto-merge…" : "Merging pull request…",
+    });
+
+    try {
+      await mergePullRequest(pullRequest.url, mergeMethod, {
+        auto: options.auto,
+        deleteBranch,
+      });
+      toast.style = Toast.Style.Success;
+      toast.title = options.auto ? "Auto-merge enabled" : "Pull request merged";
+      reloadFromDb();
+    } catch (error) {
+      toast.style = Toast.Style.Failure;
+      toast.title = options.auto ? "Auto-merge failed" : "Merge failed";
+      toast.message = error instanceof Error ? error.message : String(error);
+    }
+  }
+
   return (
     <List.Item
       icon={statusIcon(pullRequest)}
@@ -264,6 +320,23 @@ function PullRequestItem({
             url={pullRequest.url}
             icon={Icon.Globe}
           />
+          {canMerge ? (
+            <Action
+              title="Merge Pull Request"
+              icon={Icon.Checkmark}
+              style={Action.Style.Destructive}
+              shortcut={{ modifiers: ["cmd", "shift"], key: "m" }}
+              onAction={() => runMerge({ auto: false })}
+            />
+          ) : null}
+          {canMerge ? (
+            <Action
+              title="Enable Auto-Merge"
+              icon={Icon.Clock}
+              shortcut={{ modifiers: ["cmd", "shift"], key: "a" }}
+              onAction={() => runMerge({ auto: true })}
+            />
+          ) : null}
           {failingChecks.map((check) =>
             check.url ? (
               <Action.OpenInBrowser
