@@ -1,0 +1,12 @@
+node_modules
+dist
+.raycast
+.DS_Store
+
+# Local Claude Code settings (machine-specific permissions)
+.claude/
+
+# Editor/OS cruft
+*.log
+.idea
+.vscode

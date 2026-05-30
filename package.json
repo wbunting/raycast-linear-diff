@@ -1,0 +1,75 @@
+{
+  "$schema": "https://www.raycast.com/schemas/extension.json",
+  "name": "linear-diffs",
+  "title": "Linear Diffs",
+  "description": "Fast Linear Diffs review inbox for pull request status and actions.",
+  "icon": "extension-icon.png",
+  "author": "will_bunting",
+  "license": "MIT",
+  "commands": [
+    {
+      "name": "index",
+      "title": "Linear Diffs",
+      "description": "Show pull requests from Linear Diffs review notifications.",
+      "mode": "view"
+    },
+    {
+      "name": "sync",
+      "title": "Sync Linear Diffs",
+      "description": "Refresh cached Linear Diffs pull request status in the background.",
+      "mode": "no-view",
+      "interval": "5m"
+    },
+    {
+      "name": "start-sidecar",
+      "title": "Start Linear Diffs Sidecar",
+      "description": "Start the local SQLite poller for Linear Diffs.",
+      "mode": "no-view"
+    }
+  ],
+  "preferences": [
+    {
+      "name": "linearApiKey",
+      "title": "Linear API Key",
+      "description": "Create a personal API key in Linear settings.",
+      "type": "password",
+      "required": true
+    },
+    {
+      "name": "pageSize",
+      "title": "Notifications to Scan",
+      "description": "More rows can find more PRs, but each refresh asks Linear for more notifications.",
+      "type": "textfield",
+      "default": "1000",
+      "required": false
+    },
+    {
+      "name": "includeRead",
+      "title": "Include Read Notifications",
+      "label": "Read Notifications",
+      "description": "Disable to show only unread Diffs notifications.",
+      "type": "checkbox",
+      "default": true,
+      "required": false
+    }
+  ],
+  "dependencies": {
+    "@raycast/api": "^1.104.19",
+    "@raycast/utils": "^2.2.5"
+  },
+  "devDependencies": {
+    "@raycast/eslint-config": "^2.0.4",
+    "@types/node": "^22.15.24",
+    "@types/react": "^19.1.6",
+    "eslint": "^9.27.0",
+    "prettier": "^3.5.3",
+    "typescript": "^5.8.3"
+  },
+  "scripts": {
+    "build": "ray build -e dist",
+    "dev": "ray develop",
+    "fix-lint": "ray lint --fix",
+    "lint": "ray lint",
+    "publish": "ray publish"
+  }
+}
