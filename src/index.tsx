@@ -77,7 +77,6 @@ export default function Command() {
           ))}
         </List.Dropdown>
       }
-      isShowingDetail
       throttle
     >
       {filterPullRequests(data?.pullRequests ?? [], filter).length === 0 ? (
@@ -119,7 +118,6 @@ export default function Command() {
               pullRequest={pullRequest}
               preferences={preferences}
               reloadFromDb={reloadFromDb}
-              syncedAt={data?.syncedAt}
             />
           ),
         )
@@ -132,16 +130,12 @@ function PullRequestItem({
   pullRequest,
   preferences,
   reloadFromDb,
-  syncedAt,
 }: {
   pullRequest: ReviewPullRequest;
   preferences: Preferences;
   reloadFromDb: () => void;
-  syncedAt?: string;
 }) {
   const failingChecks = pullRequest.checks.filter(isFailingCheck);
-  const pendingChecks = pullRequest.checks.filter(isPendingCheck);
-  const requiredChecks = pullRequest.checks.filter((check) => check.isRequired);
   const repo = getRepositoryName(pullRequest.url);
 
   const mergeMethod = (preferences.mergeMethod ?? "squash") as MergeMethod;
@@ -199,7 +193,7 @@ function PullRequestItem({
     <List.Item
       icon={statusIcon(pullRequest)}
       title={pullRequest.title}
-      subtitle={`#${pullRequest.number}${repo ? ` · ${repo}` : ""}`}
+      subtitle={`#${pullRequest.number} · ${pullRequest.sourceBranch} → ${pullRequest.targetBranch}`}
       keywords={[
         pullRequest.sourceBranch,
         pullRequest.targetBranch,
@@ -207,93 +201,7 @@ function PullRequestItem({
         pullRequest.status,
         pullRequest.mergeStatus,
       ]}
-      accessories={[
-        ...(pullRequest.unread
-          ? [
-              {
-                icon: { source: Icon.Circle, tintColor: Color.Blue },
-                tooltip: "Unread",
-              },
-            ]
-          : []),
-        ...(failingChecks.length
-          ? [
-              {
-                text:
-                  failingChecks.length === 1
-                    ? formatCheckName(failingChecks[0])
-                    : `${failingChecks.length} failing`,
-                tooltip: `Failing: ${failingChecks.map(formatCheckName).join(", ")}`,
-                icon: { source: Icon.XMarkCircle, tintColor: Color.Red },
-              },
-            ]
-          : []),
-        ...(pendingChecks.length
-          ? [
-              {
-                text: `${pendingChecks.length} pending`,
-                icon: { source: Icon.Clock, tintColor: Color.Yellow },
-              },
-            ]
-          : []),
-        { text: formatStatus(pullRequest.status) },
-      ]}
-      detail={
-        <List.Item.Detail
-          markdown={buildMarkdown(
-            pullRequest,
-            failingChecks,
-            pendingChecks,
-            requiredChecks,
-          )}
-          metadata={
-            <List.Item.Detail.Metadata>
-              <List.Item.Detail.Metadata.Label
-                title="Status"
-                text={formatStatus(pullRequest.status)}
-                icon={statusIcon(pullRequest)}
-              />
-              <List.Item.Detail.Metadata.Label
-                title="Merge Status"
-                text={pullRequest.mergeStatus}
-              />
-              <List.Item.Detail.Metadata.Label
-                title="Checks"
-                text={formatChecks(pullRequest)}
-              />
-              <List.Item.Detail.Metadata.Separator />
-              <List.Item.Detail.Metadata.Label
-                title="Repository"
-                text={repo ?? "Unknown"}
-              />
-              <List.Item.Detail.Metadata.Label
-                title="Source"
-                text={pullRequest.sourceBranch}
-              />
-              <List.Item.Detail.Metadata.Label
-                title="Target"
-                text={pullRequest.targetBranch}
-              />
-              {pullRequest.creator?.name ? (
-                <List.Item.Detail.Metadata.Label
-                  title="Author"
-                  text={pullRequest.creator.name}
-                />
-              ) : null}
-              <List.Item.Detail.Metadata.Label
-                title="Updated"
-                text={new Date(pullRequest.updatedAt).toLocaleString()}
-              />
-              {syncedAt ? (
-                <List.Item.Detail.Metadata.Label
-                  title="Synced"
-                  text={new Date(syncedAt).toLocaleString()}
-                />
-              ) : null}
-            </List.Item.Detail.Metadata>
-          }
-        />
-      }
+      accessories={buildAccessories(pullRequest, repo)}
       actions={
         <ActionPanel>
           {pullRequest.linearUrl ? (
@@ -404,63 +312,135 @@ function filterPullRequests(
   return pullRequests.filter((pullRequest) => pullRequest.status === filter);
 }
 
-function buildMarkdown(
+function buildAccessories(
   pullRequest: ReviewPullRequest,
-  failingChecks: ReviewPullRequest["checks"],
-  pendingChecks: ReviewPullRequest["checks"],
-  requiredChecks: ReviewPullRequest["checks"],
-) {
-  const sections = [
-    `# ${pullRequest.title}`,
-    pullRequest.notificationSubtitle
-      ? `_${pullRequest.notificationSubtitle}_`
-      : undefined,
-    `**${pullRequest.sourceBranch}** into **${pullRequest.targetBranch}**`,
-    `Status: **${formatStatus(pullRequest.status)}** · Merge: **${pullRequest.mergeStatus}**`,
-  ];
+  repo: string | undefined,
+): List.Item.Accessory[] {
+  const accessories: List.Item.Accessory[] = [];
 
-  if (failingChecks.length) {
-    sections.push(
-      `## Failing Checks\n${failingChecks.map((check) => `- ${formatCheckName(check)}: ${check.status ?? "unknown"}`).join("\n")}`,
-    );
+  if (pullRequest.unread) {
+    accessories.push({
+      icon: { source: Icon.Dot, tintColor: Color.Blue },
+      tooltip: "Unread",
+    });
   }
 
-  if (pendingChecks.length) {
-    sections.push(
-      `## Pending Checks\n${pendingChecks.map((check) => `- ${formatCheckName(check)}: ${check.status ?? "pending"}`).join("\n")}`,
-    );
+  if (repo) {
+    accessories.push({ text: repo, tooltip: `Repository: ${repo}` });
   }
 
-  if (requiredChecks.length) {
-    sections.push(
-      `## Required Checks\n${requiredChecks.map((check) => `- ${formatCheckName(check)}: ${check.status ?? "unknown"}`).join("\n")}`,
-    );
+  accessories.push(...checkAccessories(pullRequest));
+
+  if (pullRequest.mergeStatus) {
+    accessories.push(mergeStatusAccessory(pullRequest.mergeStatus));
   }
 
-  return sections.filter(Boolean).join("\n\n");
+  accessories.push({
+    tag: {
+      value: formatStatus(pullRequest.status),
+      color: statusColor(pullRequest.status),
+    },
+    tooltip: `Status: ${formatStatus(pullRequest.status)}`,
+  });
+
+  return accessories;
+}
+
+function checkAccessories(
+  pullRequest: ReviewPullRequest,
+): List.Item.Accessory[] {
+  const total = pullRequest.checks.length;
+  if (!total) {
+    return [];
+  }
+
+  const failing = pullRequest.checks.filter(isFailingCheck);
+  const pending = pullRequest.checks.filter(isPendingCheck);
+  const passing = total - failing.length - pending.length;
+  const accessories: List.Item.Accessory[] = [];
+
+  if (passing > 0) {
+    accessories.push({
+      icon: { source: Icon.CheckCircle, tintColor: Color.Green },
+      text: { value: String(passing), color: Color.Green },
+      tooltip: `${passing} of ${total} checks passing`,
+    });
+  }
+
+  if (pending.length) {
+    accessories.push({
+      icon: { source: Icon.Clock, tintColor: Color.Yellow },
+      text: { value: String(pending.length), color: Color.Yellow },
+      tooltip: `Pending: ${pending.map(formatCheckName).join(", ")}`,
+    });
+  }
+
+  if (failing.length) {
+    accessories.push({
+      icon: { source: Icon.XMarkCircle, tintColor: Color.Red },
+      text: {
+        value:
+          failing.length === 1
+            ? formatCheckName(failing[0])
+            : String(failing.length),
+        color: Color.Red,
+      },
+      tooltip: `Failing: ${failing.map(formatCheckName).join(", ")}`,
+    });
+  }
+
+  return accessories;
+}
+
+function mergeStatusAccessory(mergeStatus: string): List.Item.Accessory {
+  const value = mergeStatus.toLowerCase();
+  let color: Color = Color.SecondaryText;
+  let label = formatStatus(mergeStatus);
+
+  if (value.includes("conflict") || value.includes("dirty")) {
+    color = Color.Red;
+    label = "Conflict";
+  } else if (value.includes("block")) {
+    color = Color.Orange;
+  } else if (
+    value.includes("ready") ||
+    value.includes("clean") ||
+    value.includes("mergeable") ||
+    value.includes("unblocked")
+  ) {
+    color = Color.Green;
+  } else if (
+    value.includes("behind") ||
+    value.includes("unstable") ||
+    value.includes("pending")
+  ) {
+    color = Color.Yellow;
+  }
+
+  return { tag: { value: label, color }, tooltip: `Merge: ${mergeStatus}` };
+}
+
+function statusColor(status: ReviewPullRequest["status"]): Color {
+  switch (status) {
+    case "approved":
+      return Color.Green;
+    case "merged":
+      return Color.Purple;
+    case "inReview":
+      return Color.Blue;
+    case "draft":
+    case "closed":
+      return Color.SecondaryText;
+    case "open":
+    default:
+      return Color.PrimaryText;
+  }
 }
 
 function formatCheckName(check: ReviewPullRequest["checks"][number]) {
   return check.workflowName && check.workflowName !== check.name
     ? `${check.workflowName} / ${check.name}`
     : check.name;
-}
-
-function formatChecks(pullRequest: ReviewPullRequest) {
-  const failing = pullRequest.checks.filter(isFailingCheck).length;
-  const pending = pullRequest.checks.filter(isPendingCheck).length;
-  const total = pullRequest.checks.length;
-
-  if (!total) {
-    return "No checks";
-  }
-  if (failing) {
-    return `${failing} failing of ${total}`;
-  }
-  if (pending) {
-    return `${pending} pending of ${total}`;
-  }
-  return `${total} passing`;
 }
 
 function statusIcon(pullRequest: ReviewPullRequest) {
