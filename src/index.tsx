@@ -46,6 +46,7 @@ export default function Command() {
   const [sidecarRunning, setSidecarRunning] = useState(() =>
     isSidecarRunning(),
   );
+  const [showingDetail, setShowingDetail] = useState(false);
 
   function reloadFromDb() {
     setData(readReviewInboxFromDb());
@@ -60,6 +61,7 @@ export default function Command() {
   return (
     <List
       isLoading={false}
+      isShowingDetail={showingDetail}
       searchBarPlaceholder="Search Linear Diffs pull requests"
       searchBarAccessory={
         <List.Dropdown
@@ -118,6 +120,8 @@ export default function Command() {
               pullRequest={pullRequest}
               preferences={preferences}
               reloadFromDb={reloadFromDb}
+              showingDetail={showingDetail}
+              onToggleDetail={() => setShowingDetail((current) => !current)}
             />
           ),
         )
@@ -130,10 +134,14 @@ function PullRequestItem({
   pullRequest,
   preferences,
   reloadFromDb,
+  showingDetail,
+  onToggleDetail,
 }: {
   pullRequest: ReviewPullRequest;
   preferences: Preferences;
   reloadFromDb: () => void;
+  showingDetail: boolean;
+  onToggleDetail: () => void;
 }) {
   const failingChecks = pullRequest.checks.filter(isFailingCheck);
   const repo = getRepositoryName(pullRequest.url);
@@ -201,7 +209,63 @@ function PullRequestItem({
         pullRequest.status,
         pullRequest.mergeStatus,
       ]}
-      accessories={buildAccessories(pullRequest, repo)}
+      accessories={
+        showingDetail ? undefined : buildAccessories(pullRequest, repo)
+      }
+      detail={
+        showingDetail ? (
+          <List.Item.Detail
+            markdown={buildDetailMarkdown(pullRequest)}
+            metadata={
+              <List.Item.Detail.Metadata>
+                <List.Item.Detail.Metadata.Label
+                  title="Status"
+                  text={formatStatus(pullRequest.status)}
+                  icon={statusIcon(pullRequest)}
+                />
+                <List.Item.Detail.Metadata.TagList title="Merge">
+                  <List.Item.Detail.Metadata.TagList.Item
+                    text={
+                      mergeStatusAccessory(pullRequest.mergeStatus).tag
+                        ?.value as string
+                    }
+                    color={
+                      mergeStatusAccessory(pullRequest.mergeStatus).tag?.color
+                    }
+                  />
+                </List.Item.Detail.Metadata.TagList>
+                <List.Item.Detail.Metadata.Label
+                  title="Checks"
+                  text={formatChecksSummary(pullRequest)}
+                />
+                <List.Item.Detail.Metadata.Separator />
+                <List.Item.Detail.Metadata.Label
+                  title="Repository"
+                  text={repo ?? "Unknown"}
+                />
+                <List.Item.Detail.Metadata.Label
+                  title="Source"
+                  text={pullRequest.sourceBranch}
+                />
+                <List.Item.Detail.Metadata.Label
+                  title="Target"
+                  text={pullRequest.targetBranch}
+                />
+                {pullRequest.creator?.name ? (
+                  <List.Item.Detail.Metadata.Label
+                    title="Author"
+                    text={pullRequest.creator.name}
+                  />
+                ) : null}
+                <List.Item.Detail.Metadata.Label
+                  title="Updated"
+                  text={new Date(pullRequest.updatedAt).toLocaleString()}
+                />
+              </List.Item.Detail.Metadata>
+            }
+          />
+        ) : undefined
+      }
       actions={
         <ActionPanel>
           {pullRequest.linearUrl ? (
@@ -227,6 +291,12 @@ function PullRequestItem({
             title="Open Pull Request"
             url={pullRequest.url}
             icon={Icon.Globe}
+          />
+          <Action
+            title={showingDetail ? "Hide Details" : "Show Details"}
+            icon={Icon.Sidebar}
+            shortcut={{ modifiers: ["cmd"], key: "d" }}
+            onAction={onToggleDetail}
           />
           {canMerge ? (
             <Action
@@ -435,6 +505,69 @@ function statusColor(status: ReviewPullRequest["status"]): Color {
     default:
       return Color.PrimaryText;
   }
+}
+
+function buildDetailMarkdown(pullRequest: ReviewPullRequest): string {
+  const failing = pullRequest.checks.filter(isFailingCheck);
+  const pending = pullRequest.checks.filter(isPendingCheck);
+  const passing = pullRequest.checks.filter(
+    (check) => !isFailingCheck(check) && !isPendingCheck(check),
+  );
+
+  const sections = [
+    `# ${pullRequest.title}`,
+    pullRequest.notificationSubtitle
+      ? `_${pullRequest.notificationSubtitle}_`
+      : undefined,
+    `\`${pullRequest.sourceBranch}\` → \`${pullRequest.targetBranch}\``,
+    `Status: **${formatStatus(pullRequest.status)}**  ·  Merge: **${pullRequest.mergeStatus}**`,
+  ];
+
+  const checkList = (checks: ReviewPullRequest["checks"], mark: string) =>
+    checks
+      .map(
+        (check) =>
+          `- ${mark} ${formatCheckName(check)} — ${check.status ?? "unknown"}`,
+      )
+      .join("\n");
+
+  if (failing.length) {
+    sections.push(
+      `## ❌ Failing (${failing.length})\n${checkList(failing, "❌")}`,
+    );
+  }
+  if (pending.length) {
+    sections.push(
+      `## ⏳ Pending (${pending.length})\n${checkList(pending, "⏳")}`,
+    );
+  }
+  if (passing.length) {
+    sections.push(
+      `## ✅ Passing (${passing.length})\n${checkList(passing, "✅")}`,
+    );
+  }
+  if (!pullRequest.checks.length) {
+    sections.push("_No checks reported._");
+  }
+
+  return sections.filter(Boolean).join("\n\n");
+}
+
+function formatChecksSummary(pullRequest: ReviewPullRequest): string {
+  const total = pullRequest.checks.length;
+  if (!total) {
+    return "No checks";
+  }
+  const failing = pullRequest.checks.filter(isFailingCheck).length;
+  const pending = pullRequest.checks.filter(isPendingCheck).length;
+  const passing = total - failing - pending;
+  return [
+    `${passing}/${total} passing`,
+    failing ? `${failing} failing` : undefined,
+    pending ? `${pending} pending` : undefined,
+  ]
+    .filter(Boolean)
+    .join(" · ");
 }
 
 function formatCheckName(check: ReviewPullRequest["checks"][number]) {
