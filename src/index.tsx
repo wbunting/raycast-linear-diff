@@ -1,9 +1,7 @@
 import {
   Action,
   ActionPanel,
-  Alert,
   Color,
-  confirmAlert,
   Icon,
   Keyboard,
   List,
@@ -152,31 +150,6 @@ function PullRequestItem({
     pullRequest.status !== "merged" && pullRequest.status !== "closed";
 
   async function runMerge(options: { auto: boolean }) {
-    if (options.auto) {
-      const enabled = await confirmAlert({
-        title: `Enable auto-merge for #${pullRequest.number}?`,
-        message: `${pullRequest.title}\nWill ${mergeMethod} into ${pullRequest.targetBranch} once requirements pass.`,
-        primaryAction: { title: "Enable Auto-Merge" },
-        icon: Icon.Clock,
-      });
-      if (!enabled) {
-        return;
-      }
-    } else {
-      const confirmed = await confirmAlert({
-        title: `Merge #${pullRequest.number} now?`,
-        message: `${pullRequest.title}\n${pullRequest.sourceBranch} into ${pullRequest.targetBranch} (${mergeMethod}).`,
-        primaryAction: {
-          title: "Merge Pull Request",
-          style: Alert.ActionStyle.Destructive,
-        },
-        icon: Icon.Checkmark,
-      });
-      if (!confirmed) {
-        return;
-      }
-    }
-
     const toast = await showToast({
       style: Toast.Style.Animated,
       title: options.auto ? "Enabling auto-merge…" : "Merging pull request…",
@@ -198,19 +171,6 @@ function PullRequestItem({
   }
 
   async function runClose() {
-    const confirmed = await confirmAlert({
-      title: `Close #${pullRequest.number} without merging?`,
-      message: `${pullRequest.title}\n${pullRequest.sourceBranch} → ${pullRequest.targetBranch}`,
-      primaryAction: {
-        title: "Close Pull Request",
-        style: Alert.ActionStyle.Destructive,
-      },
-      icon: Icon.XMarkCircle,
-    });
-    if (!confirmed) {
-      return;
-    }
-
     const toast = await showToast({
       style: Toast.Style.Animated,
       title: "Closing pull request…",
