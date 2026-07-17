@@ -12,15 +12,25 @@ type SqliteDatabase = {
   close: () => void;
 };
 
+type DatabaseSyncConstructor = new (
+  path: string,
+  options?: { readOnly?: boolean; open?: boolean },
+) => SqliteDatabase;
+
+let databaseSync: DatabaseSyncConstructor | undefined;
+
 // `node:sqlite` is an experimental built-in without published type exports, so
-// it is loaded via require() and typed manually.
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const { DatabaseSync } = require("node:sqlite") as {
-  DatabaseSync: new (
-    path: string,
-    options?: { readOnly?: boolean; open?: boolean },
-  ) => SqliteDatabase;
-};
+// it is loaded lazily via require() and typed manually. Lazy so the store
+// variant (which never touches SQLite) doesn't load it at import time.
+function getDatabaseSync(): DatabaseSyncConstructor {
+  if (!databaseSync) {
+    databaseSync =
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      (require("node:sqlite") as { DatabaseSync: DatabaseSyncConstructor })
+        .DatabaseSync;
+  }
+  return databaseSync;
+}
 
 type PullRequestRow = {
   id: string;
@@ -64,6 +74,7 @@ export function readReviewInboxFromDb(): ReviewInbox | undefined {
     return undefined;
   }
 
+  const DatabaseSync = getDatabaseSync();
   const db = new DatabaseSync(DB_PATH, { readOnly: true });
   try {
     const pullRequestRows = db
@@ -143,6 +154,7 @@ export function setPullRequestStatusInDb(
     return;
   }
 
+  const DatabaseSync = getDatabaseSync();
   const db = new DatabaseSync(DB_PATH);
   try {
     db.prepare("update pull_requests set status = ? where id = ?").run(

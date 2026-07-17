@@ -8,13 +8,13 @@
 /* eslint-disable @typescript-eslint/ban-types */
 
 type ExtensionPreferences = {
-  /** Linear API Key - Create a personal API key in Linear settings. */
-  "linearApiKey": string,
+  /** Linear API Key - Optional. Personal API key used instead of Sign in with Linear. Required for the local sidecar variant. */
+  "linearApiKey"?: string,
   /** Notifications to Scan - More rows can find more PRs, but each refresh asks Linear for more notifications. */
   "pageSize": string,
   /** Include Read Notifications - Disable to show only unread Diffs notifications. */
   "includeRead": boolean,
-  /** Merge Method - How the GitHub CLI merges pull requests when you merge or enable auto-merge. */
+  /** Merge Method - How pull requests are merged when you merge or enable auto-merge. */
   "mergeMethod": "squash" | "merge" | "rebase",
   /** Delete Branch on Merge - Delete the source branch after merging. */
   "deleteBranchOnMerge": boolean
@@ -28,8 +28,6 @@ declare namespace Preferences {
   export type Index = ExtensionPreferences & {}
   /** Preferences accessible in the `sync` command */
   export type Sync = ExtensionPreferences & {}
-  /** Preferences accessible in the `start-sidecar` command */
-  export type StartSidecar = ExtensionPreferences & {}
 }
 
 declare namespace Arguments {
@@ -37,7 +35,5 @@ declare namespace Arguments {
   export type Index = {}
   /** Arguments passed to the `sync` command */
   export type Sync = {}
-  /** Arguments passed to the `start-sidecar` command */
-  export type StartSidecar = {}
 }
 

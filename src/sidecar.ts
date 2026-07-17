@@ -44,10 +44,23 @@ export function isSidecarRunning() {
 
 export async function startSidecar() {
   const preferences = getPreferenceValues<Preferences>();
+  const linearApiKey = preferences.linearApiKey?.trim();
+
+  // The sidecar is a detached process that can't refresh OAuth tokens, so it
+  // only runs with a long-lived personal API key.
+  if (!linearApiKey) {
+    await showToast({
+      style: Toast.Style.Failure,
+      title: "Linear API key required for sidecar",
+      message: "Set one in the extension preferences to enable fast polling.",
+    });
+    return;
+  }
+
   mkdirSync(SIDECAR_DIR, { recursive: true });
 
   const config: SidecarConfig = {
-    linearApiKey: preferences.linearApiKey,
+    linearApiKey,
     pageSize: getPageSize(preferences.pageSize),
     includeRead: preferences.includeRead !== false,
     pollIntervalMs: 60_000,

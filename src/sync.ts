@@ -1,11 +1,21 @@
-import { updateCommandMetadata } from "@raycast/api";
+import { getPreferenceValues, updateCommandMetadata } from "@raycast/api";
+import { withAccessToken } from "@raycast/utils";
+import { linearAuth } from "./auth";
 import { readReviewInboxFromDb } from "./db";
+import { SIDECAR_ENABLED } from "./flags";
+import { fetchAndCacheReviewInbox, Preferences, ReviewInbox } from "./linear";
 import { isSidecarRunning, startSidecar } from "./sidecar";
 
-export default async function Command() {
-  await startSidecar();
+async function syncCommand() {
+  let inbox: ReviewInbox | undefined;
 
-  const inbox = readReviewInboxFromDb();
+  if (SIDECAR_ENABLED) {
+    await startSidecar();
+    inbox = readReviewInboxFromDb();
+  } else {
+    inbox = await fetchAndCacheReviewInbox(getPreferenceValues<Preferences>());
+  }
+
   const visiblePullRequests = (inbox?.pullRequests ?? []).filter(
     (pullRequest) => pullRequest.status !== "merged",
   );
@@ -24,8 +34,11 @@ export default async function Command() {
   ).length;
 
   await updateCommandMetadata({
-    subtitle: isSidecarRunning()
-      ? `${visiblePullRequests.length} active${failingCount ? `, ${failingCount} failing` : ""}`
-      : "Sidecar stopped",
+    subtitle:
+      SIDECAR_ENABLED && !isSidecarRunning()
+        ? "Sidecar stopped"
+        : `${visiblePullRequests.length} active${failingCount ? `, ${failingCount} failing` : ""}`,
   });
 }
+
+export default withAccessToken(linearAuth)(syncCommand);

@@ -10,10 +10,15 @@ import {
   open,
   showToast,
 } from "@raycast/api";
+import { withAccessToken } from "@raycast/utils";
 import { useEffect, useState } from "react";
+import { linearAuth } from "./auth";
 import { readReviewInboxFromDb, setPullRequestStatusInDb } from "./db";
+import { SIDECAR_ENABLED } from "./flags";
 import { closePullRequest, mergePullRequest, MergeMethod } from "./github";
 import {
+  fetchAndCacheReviewInbox,
+  getCachedReviewInbox,
   markPullRequestRead,
   Preferences,
   ReviewInbox,
@@ -35,14 +40,15 @@ const STATUS_FILTERS: { title: string; value: StatusFilter }[] = [
   { title: "Closed", value: "closed" },
 ];
 
-export default function Command() {
+function Command() {
   const preferences = getPreferenceValues<Preferences>();
   const [filter, setFilter] = useState<StatusFilter>("all");
   const [data, setData] = useState<ReviewInbox | undefined>(() =>
-    readReviewInboxFromDb(),
+    SIDECAR_ENABLED ? readReviewInboxFromDb() : getCachedReviewInbox(),
   );
-  const [sidecarRunning, setSidecarRunning] = useState(() =>
-    isSidecarRunning(),
+  const [isLoading, setIsLoading] = useState(!SIDECAR_ENABLED);
+  const [sidecarRunning, setSidecarRunning] = useState(
+    () => SIDECAR_ENABLED && isSidecarRunning(),
   );
   const [showingDetail, setShowingDetail] = useState(false);
 
@@ -51,14 +57,60 @@ export default function Command() {
     setSidecarRunning(isSidecarRunning());
   }
 
+  async function refreshFromLinear() {
+    setIsLoading(true);
+    try {
+      setData(await fetchAndCacheReviewInbox(preferences));
+    } catch (error) {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: "Failed to refresh from Linear",
+        message: error instanceof Error ? error.message : String(error),
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  function reload() {
+    if (SIDECAR_ENABLED) {
+      reloadFromDb();
+    } else {
+      refreshFromLinear();
+    }
+  }
+
+  // Optimistically reflect a local action (merge/close) so the list updates
+  // immediately; the next sync overwrites it with authoritative state.
+  function applyStatus(id: string, status: ReviewPullRequest["status"]) {
+    if (SIDECAR_ENABLED) {
+      setPullRequestStatusInDb(id, status);
+      reloadFromDb();
+      return;
+    }
+    setData(
+      (current) =>
+        current && {
+          ...current,
+          pullRequests: current.pullRequests.map((pullRequest) =>
+            pullRequest.id === id ? { ...pullRequest, status } : pullRequest,
+          ),
+        },
+    );
+  }
+
   useEffect(() => {
+    if (!SIDECAR_ENABLED) {
+      refreshFromLinear();
+      return;
+    }
     const interval = setInterval(reloadFromDb, 2_000);
     return () => clearInterval(interval);
   }, []);
 
   return (
     <List
-      isLoading={false}
+      isLoading={isLoading}
       isShowingDetail={showingDetail}
       searchBarPlaceholder="Search Linear Diffs pull requests"
       searchBarAccessory={
@@ -83,29 +135,33 @@ export default function Command() {
         <List.EmptyView
           icon={Icon.CodeBlock}
           title={
-            sidecarRunning
+            !SIDECAR_ENABLED || sidecarRunning
               ? "No Linear Diffs PRs found"
               : "Linear Diffs sidecar is not running"
           }
           description={
-            sidecarRunning
-              ? "Waiting for the local SQLite database to receive synced PRs."
-              : "Start the sidecar to poll Linear every minute and populate SQLite."
+            !SIDECAR_ENABLED
+              ? "Pull requests from your Linear review notifications show up here."
+              : sidecarRunning
+                ? "Waiting for the local SQLite database to receive synced PRs."
+                : "Start the sidecar to poll Linear every minute and populate SQLite."
           }
           actions={
             <ActionPanel>
+              {SIDECAR_ENABLED ? (
+                <Action
+                  title="Start Sidecar"
+                  icon={Icon.Play}
+                  onAction={async () => {
+                    await startSidecar();
+                    reloadFromDb();
+                  }}
+                />
+              ) : null}
               <Action
-                title="Start Sidecar"
-                icon={Icon.Play}
-                onAction={async () => {
-                  await startSidecar();
-                  reloadFromDb();
-                }}
-              />
-              <Action
-                title="Reload from SQLite"
+                title="Refresh"
                 icon={Icon.RotateClockwise}
-                onAction={reloadFromDb}
+                onAction={reload}
               />
             </ActionPanel>
           }
@@ -117,7 +173,8 @@ export default function Command() {
               key={pullRequest.id}
               pullRequest={pullRequest}
               preferences={preferences}
-              reloadFromDb={reloadFromDb}
+              reload={reload}
+              applyStatus={applyStatus}
               showingDetail={showingDetail}
               onToggleDetail={() => setShowingDetail((current) => !current)}
             />
@@ -131,13 +188,15 @@ export default function Command() {
 function PullRequestItem({
   pullRequest,
   preferences,
-  reloadFromDb,
+  reload,
+  applyStatus,
   showingDetail,
   onToggleDetail,
 }: {
   pullRequest: ReviewPullRequest;
   preferences: Preferences;
-  reloadFromDb: () => void;
+  reload: () => void;
+  applyStatus: (id: string, status: ReviewPullRequest["status"]) => void;
   showingDetail: boolean;
   onToggleDetail: () => void;
 }) {
@@ -159,10 +218,13 @@ function PullRequestItem({
       await mergePullRequest(pullRequest.url, mergeMethod, {
         auto: options.auto,
         deleteBranch,
+        sourceBranch: pullRequest.sourceBranch,
       });
       toast.style = Toast.Style.Success;
       toast.title = options.auto ? "Auto-merge enabled" : "Pull request merged";
-      reloadFromDb();
+      if (!options.auto) {
+        applyStatus(pullRequest.id, "merged");
+      }
     } catch (error) {
       toast.style = Toast.Style.Failure;
       toast.title = options.auto ? "Auto-merge failed" : "Merge failed";
@@ -177,11 +239,13 @@ function PullRequestItem({
     });
 
     try {
-      await closePullRequest(pullRequest.url, { deleteBranch });
-      setPullRequestStatusInDb(pullRequest.id, "closed");
+      await closePullRequest(pullRequest.url, {
+        deleteBranch,
+        sourceBranch: pullRequest.sourceBranch,
+      });
       toast.style = Toast.Style.Success;
       toast.title = "Pull request closed";
-      reloadFromDb();
+      applyStatus(pullRequest.id, "closed");
     } catch (error) {
       toast.style = Toast.Style.Failure;
       toast.title = "Close failed";
@@ -339,29 +403,33 @@ function PullRequestItem({
             icon={Icon.CheckCircle}
             shortcut={{ modifiers: ["cmd", "shift"], key: "r" }}
             onAction={async () => {
-              await markPullRequestRead(preferences.linearApiKey, pullRequest);
-              reloadFromDb();
+              await markPullRequestRead(pullRequest);
+              reload();
             }}
           />
           <Action
-            title="Reload from SQLite"
+            title="Refresh"
             icon={Icon.RotateClockwise}
             shortcut={Keyboard.Shortcut.Common.Refresh}
-            onAction={reloadFromDb}
+            onAction={reload}
           />
-          <Action
-            title="Start Sidecar"
-            icon={Icon.Play}
-            onAction={async () => {
-              await startSidecar();
-              reloadFromDb();
-            }}
-          />
+          {SIDECAR_ENABLED ? (
+            <Action
+              title="Start Sidecar"
+              icon={Icon.Play}
+              onAction={async () => {
+                await startSidecar();
+                reload();
+              }}
+            />
+          ) : null}
         </ActionPanel>
       }
     />
   );
 }
+
+export default withAccessToken(linearAuth)(Command);
 
 function filterPullRequests(
   pullRequests: ReviewPullRequest[],
@@ -464,7 +532,10 @@ function checkAccessories(
   return accessories;
 }
 
-function mergeStatusAccessory(mergeStatus: string): List.Item.Accessory {
+function mergeStatusAccessory(mergeStatus: string): {
+  tag: { value: string; color: Color };
+  tooltip: string;
+} {
   const value = mergeStatus.toLowerCase();
   let color: Color = Color.SecondaryText;
   let label = formatStatus(mergeStatus);
@@ -619,7 +690,7 @@ function isPendingCheck(check: ReviewPullRequest["checks"][number]) {
   );
 }
 
-function formatStatus(status: ReviewPullRequest["status"]) {
+function formatStatus(status: string) {
   return status
     .replace(/([a-z])([A-Z])/g, "$1 $2")
     .replace(/^./, (character) => character.toUpperCase());

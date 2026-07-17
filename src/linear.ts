@@ -1,6 +1,7 @@
 import { environment, showToast, Toast } from "@raycast/api";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { getLinearAuthorizationHeader } from "./auth";
 
 const LINEAR_GRAPHQL_ENDPOINT = "https://api.linear.app/graphql";
 const REVIEW_INBOX_CACHE_PATH = join(
@@ -9,7 +10,7 @@ const REVIEW_INBOX_CACHE_PATH = join(
 );
 
 export type Preferences = {
-  linearApiKey: string;
+  linearApiKey?: string;
   pageSize?: string;
   includeRead?: boolean;
   mergeMethod?: "squash" | "merge" | "rebase";
@@ -185,7 +186,7 @@ export async function fetchReviewInbox(
         pageInfo: PageInfo;
         nodes: PullRequestNotification[];
       };
-    }>(preferences.linearApiKey, REVIEW_INBOX_QUERY, {
+    }>(getLinearAuthorizationHeader(), REVIEW_INBOX_QUERY, {
       first,
       after,
     });
@@ -240,14 +241,14 @@ export function getCachedReviewInbox(): ReviewInbox | undefined {
 }
 
 export async function markPullRequestRead(
-  apiKey: string,
   pullRequest: ReviewPullRequest,
 ): Promise<void> {
   const readAt = new Date().toISOString();
+  const authorization = getLinearAuthorizationHeader();
 
   await Promise.all(
     pullRequest.notificationIds.map((id) =>
-      linearRequest(apiKey, MARK_NOTIFICATION_READ_MUTATION, {
+      linearRequest(authorization, MARK_NOTIFICATION_READ_MUTATION, {
         id,
         readAt,
       }),
@@ -258,14 +259,14 @@ export async function markPullRequestRead(
 }
 
 async function linearRequest<T>(
-  apiKey: string,
+  authorization: string,
   query: string,
   variables: Record<string, unknown>,
 ): Promise<T> {
   const response = await fetch(LINEAR_GRAPHQL_ENDPOINT, {
     method: "POST",
     headers: {
-      Authorization: apiKey,
+      Authorization: authorization,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({ query, variables }),
