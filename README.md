@@ -81,6 +81,17 @@ In this variant the **Sync Linear Diffs** command acts as a watchdog (restarts t
 
 The sidecar requires a Node.js runtime with the experimental **`node:sqlite`** module (Node 22+). Raycast bundles a compatible runtime; the sidecar runs under the same `process.execPath`.
 
+## Vicinae
+
+The extension runs unmodified under [Vicinae](https://vicinae.com)'s Raycast compatibility layer (`@raycast/api` is shimmed at runtime; `@raycast/utils` is bundled).
+
+```sh
+npm run vicinae:build   # builds into ~/.local/share/vicinae/extensions/linear-diffs
+npm run vicinae:dev     # vici develop with hot reload
+```
+
+Raycast preferences don't carry over — set them again in Vicinae. The sidecar runs under Vicinae's bundled Node 22 runtime, which includes `node:sqlite`.
+
 ## Development
 
 ```sh

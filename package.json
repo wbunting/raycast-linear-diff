@@ -96,6 +96,7 @@
     "@raycast/eslint-config": "^2.0.4",
     "@types/node": "^22.15.24",
     "@types/react": "^19.1.6",
+    "@vicinae/api": "^0.29.1",
     "eslint": "^9.27.0",
     "prettier": "^3.5.3",
     "typescript": "^5.8.3"
@@ -107,6 +108,8 @@
     "lint": "ray lint",
     "publish": "ray publish",
     "variant:local": "node scripts/set-variant.mjs local",
-    "variant:store": "node scripts/set-variant.mjs store"
+    "variant:store": "node scripts/set-variant.mjs store",
+    "vicinae:build": "vici build",
+    "vicinae:dev": "vici develop"
   }
 }
